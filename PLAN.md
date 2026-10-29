@@ -44,6 +44,18 @@ design decisions behind the implementation.
 
 Reserved usernames: `users`, `admin`.
 
+Responses:
+- Listings are JSON arrays of names, sorted.
+- Creating returns `201` with a `Location` header; `POST /:user/:db` also
+  returns `{"id": "<ulid>"}`.
+- `PUT` returns `201` when it creates a document and `204` when it replaces one.
+- Deletes and password changes return `204`.
+- Errors are plain text: `400` invalid name or body, `401` missing or wrong
+  login (with `WWW-Authenticate`), `403` not yours, `404`, `409` name taken,
+  `415` missing or unsupported content type.
+
+The admin may write to any user's databases, for moderation.
+
 ## Architecture
 
 Dependencies point inward only:

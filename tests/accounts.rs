@@ -1,93 +1,10 @@
-//! End-to-end user stories through the real router, without opening a port.
+//! User stories about accounts: creating users, changing passwords and
+//! deleting accounts.
 
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Method, Request, StatusCode, header};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use http_body_util::BodyExt;
-use lowkey::config::Config;
-use lowkey::service::hash_password;
-use tower::ServiceExt;
+mod common;
 
-const ADMIN: (&str, &str) = ("admin", "admin-secret");
-
-/// A running app over a temporary data directory.
-struct TestApp {
-    router: Router,
-    _data_dir: tempfile::TempDir,
-}
-
-/// What a test sees of a response.
-struct Reply {
-    status: StatusCode,
-    headers: axum::http::HeaderMap,
-    body: String,
-}
-
-impl TestApp {
-    async fn new() -> Self {
-        let data_dir = tempfile::tempdir().unwrap();
-        let config = Config {
-            data_dir: data_dir.path().to_owned(),
-            admin_password_hash: Some(hash_password(ADMIN.1)),
-            ..Config::default()
-        };
-        let router = lowkey::build_app(&config).await.unwrap();
-        Self {
-            router,
-            _data_dir: data_dir,
-        }
-    }
-
-    /// Sends a request with an optional Basic auth login and form body.
-    async fn send(
-        &self,
-        method: Method,
-        uri: &str,
-        login: Option<(&str, &str)>,
-        form: &str,
-    ) -> Reply {
-        let mut request = Request::builder().method(method).uri(uri);
-        if let Some((user, password)) = login {
-            let token = BASE64.encode(format!("{user}:{password}"));
-            request = request.header(header::AUTHORIZATION, format!("Basic {token}"));
-        }
-        if !form.is_empty() {
-            request = request.header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
-        }
-        let request = request.body(Body::from(form.to_owned())).unwrap();
-
-        let response = self.router.clone().oneshot(request).await.unwrap();
-        let status = response.status();
-        let headers = response.headers().clone();
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        Reply {
-            status,
-            headers,
-            body: String::from_utf8_lossy(&body).into_owned(),
-        }
-    }
-
-    /// Creates a user as the admin.
-    async fn create_user(&self, user: &str, password: &str) {
-        let form = format!("username={user}&password={password}");
-        let reply = self.send(Method::POST, "/users", Some(ADMIN), &form).await;
-        assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.body);
-    }
-}
-
-/// As an operator, I can ask the server whether it is alive, so that my
-/// monitoring and load balancer know when to route traffic to it.
-#[tokio::test]
-async fn operator_checks_that_the_server_is_alive() {
-    let app = TestApp::new().await;
-
-    let reply = app.send(Method::GET, "/healthz", None, "").await;
-
-    assert_eq!(reply.status, StatusCode::OK);
-    assert_eq!(reply.body, "ok");
-}
+use axum::http::{Method, StatusCode, header};
+use common::{ADMIN, TestApp};
 
 /// As the admin, I can create accounts for new users, so that only people I
 /// choose can store data on my server.
@@ -96,12 +13,12 @@ async fn admin_creates_an_account_for_a_new_user() {
     let app = TestApp::new().await;
     let form = "username=alice&password=wonderland";
 
-    let reply = app.send(Method::POST, "/users", Some(ADMIN), form).await;
+    let reply = app.send(Method::POST, "/users", ADMIN, form).await;
     assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.body);
     assert_eq!(reply.headers[header::LOCATION], "/alice");
 
     // The name is now taken.
-    let reply = app.send(Method::POST, "/users", Some(ADMIN), form).await;
+    let reply = app.send(Method::POST, "/users", ADMIN, form).await;
     assert_eq!(reply.status, StatusCode::CONFLICT);
 
     // Nobody else may create accounts.
@@ -118,7 +35,7 @@ async fn admin_creates_an_account_for_a_new_user() {
 
     // Reserved and malformed names are refused.
     for form in ["username=users&password=x", "username=a.b&password=x"] {
-        let reply = app.send(Method::POST, "/users", Some(ADMIN), form).await;
+        let reply = app.send(Method::POST, "/users", ADMIN, form).await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{form}");
     }
 }
@@ -163,7 +80,7 @@ async fn user_changes_their_password() {
         .send(
             Method::PUT,
             "/users/alice/password",
-            Some(ADMIN),
+            ADMIN,
             "password=reset",
         )
         .await;
@@ -201,12 +118,8 @@ async fn user_deletes_their_account() {
     app.create_user("alice", "again").await;
 
     // The admin may delete any account, but only existing ones.
-    let reply = app
-        .send(Method::DELETE, "/users/bob", Some(ADMIN), "")
-        .await;
+    let reply = app.send(Method::DELETE, "/users/bob", ADMIN, "").await;
     assert_eq!(reply.status, StatusCode::NO_CONTENT);
-    let reply = app
-        .send(Method::DELETE, "/users/bob", Some(ADMIN), "")
-        .await;
+    let reply = app.send(Method::DELETE, "/users/bob", ADMIN, "").await;
     assert_eq!(reply.status, StatusCode::NOT_FOUND);
 }

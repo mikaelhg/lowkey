@@ -3,10 +3,14 @@
 //! about HTTP.
 
 mod auth;
+mod databases;
+mod documents;
 mod error;
 mod users;
 
 pub use auth::{Auth, Credentials, hash_password, is_password_hash};
+pub use databases::Databases;
+pub use documents::{Documents, Written};
 pub use error::ServiceError;
 pub use users::Users;
 
@@ -45,13 +49,17 @@ impl Caller {
 pub struct Services {
     pub auth: Auth,
     pub users: Users,
+    pub databases: Databases,
+    pub documents: Documents,
 }
 
 impl Services {
     pub fn new(store: FsStore, admin_password_hash: Option<String>) -> Self {
         Self {
             auth: Auth::new(store.clone(), admin_password_hash),
-            users: Users::new(store),
+            users: Users::new(store.clone()),
+            databases: Databases::new(store.clone()),
+            documents: Documents::new(store),
         }
     }
 }

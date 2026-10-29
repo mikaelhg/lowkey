@@ -6,6 +6,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde::Serialize;
+
 /// Longest allowed name, in bytes.
 pub const MAX_NAME_LEN: usize = 64;
 
@@ -39,7 +41,7 @@ fn validate(name: &str) -> Result<(), NameError> {
 }
 
 /// The name of a user account.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Username(String);
 
 impl FromStr for Username {
@@ -55,7 +57,7 @@ impl FromStr for Username {
 }
 
 /// The name of a database owned by a user.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct DbName(String);
 
 impl FromStr for DbName {
@@ -68,7 +70,7 @@ impl FromStr for DbName {
 }
 
 /// The name of a document inside a database.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct DocName(String);
 
 impl FromStr for DocName {

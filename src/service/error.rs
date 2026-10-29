@@ -14,6 +14,10 @@ pub enum ServiceError {
     Conflict,
     #[error("{0}")]
     InvalidInput(String),
+    #[error(
+        "unsupported content type; use application/json, text/plain or application/octet-stream"
+    )]
+    UnsupportedContentType,
     #[error("storage failure: {0}")]
     Storage(StorageError),
 }

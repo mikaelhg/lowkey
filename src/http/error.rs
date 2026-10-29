@@ -13,6 +13,7 @@ impl IntoResponse for ServiceError {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict => StatusCode::CONFLICT,
             Self::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            Self::UnsupportedContentType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
