@@ -1,0 +1,36 @@
+# Lowkey configuration. Install as /etc/lowkey/lowkey.toml.
+#
+# Every setting is optional; the values below are the defaults unless noted.
+# Environment variables override the file: LOWKEY_LISTEN, LOWKEY_DATA_DIR and
+# LOWKEY_ADMIN_PASSWORD_HASH.
+
+# Address to listen on. Keep it on localhost behind a TLS reverse proxy:
+# Basic auth sends passwords with every request.
+listen = "127.0.0.1:8080"
+
+# Where all data lives. Default "data", relative to the working directory;
+# this matches the systemd unit's StateDirectory.
+data_dir = "/var/lib/lowkey"
+
+# Argon2 hash of the admin password, from `lowkey hash-password`. Without it
+# nobody can create users. Prefer setting LOWKEY_ADMIN_PASSWORD_HASH in
+# /etc/lowkey/admin.env (mode 0600) so the hash isn't world-readable.
+# admin_password_hash = "$argon2id$v=19$..."
+
+# Take the client address from the last X-Forwarded-For entry. Default false;
+# enable it only behind a reverse proxy, which the sample Caddyfile is.
+trust_forwarded_for = true
+
+[limits]
+# Largest document body, in bytes. Larger uploads get 413.
+max_document_bytes = 1048576
+
+# Per-user quotas. Writes beyond them get 507.
+max_bytes_per_user = 104857600
+max_documents_per_user = 10000
+max_databases_per_user = 50
+
+# Per client address, in fixed one-minute windows. 0 disables a limit.
+# Beyond them requests get 429.
+requests_per_minute = 600
+failed_logins_per_minute = 10

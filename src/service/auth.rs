@@ -15,6 +15,7 @@ use argon2::password_hash::phc::PasswordHash;
 use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use sha2::{Digest, Sha256};
 
+use super::password_work::run_password_work;
 use super::{Caller, ServiceError};
 use crate::domain::Username;
 use crate::storage::{FsStore, StorageError};
@@ -111,9 +112,7 @@ impl Auth {
 
         let password = credentials.password.clone();
         let hash = password_hash.clone();
-        let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
-            .await
-            .expect("password verification does not panic");
+        let valid = run_password_work(move || verify_password(&password, &hash)).await;
 
         if valid {
             let login = CachedLogin {

@@ -13,6 +13,12 @@ design decisions behind the implementation.
 - **Login cache:** after a successful Argon2 check, a SHA-256 digest of the
   password is cached for 5 minutes alongside the hash it matched, so password
   changes and deletions invalidate it automatically.
+- **Password work pool:** Argon2 runs on two dedicated threads, not tokio's
+  blocking pool. Each run needs about 19 MiB; on the blocking pool, 40
+  parallel logins peaked at 706 MB, because every short-lived thread kept its
+  own copy in the allocator. With the pool, the same burst peaks at 43 MB.
+- **Footprint** (release build, measured): 2.6 MB binary, 4 MB idle memory,
+  about 43 MB peak under a burst of logins.
 - **Storage:** plain files on disk, atomic writes (temp file, fsync, rename).
 - **Anonymous documents:** `POST /:user/:db` returns `201`, a `Location` header and
   a ULID.

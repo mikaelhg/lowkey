@@ -6,6 +6,7 @@ mod auth;
 mod databases;
 mod documents;
 mod error;
+mod password_work;
 mod quota;
 mod users;
 

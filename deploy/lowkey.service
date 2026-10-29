@@ -1,0 +1,42 @@
+# Lowkey systemd unit. Install as /etc/systemd/system/lowkey.service, with
+# the binary at /usr/local/bin/lowkey and the config at /etc/lowkey/lowkey.toml.
+
+[Unit]
+Description=Lowkey key/value HTTP database
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/lowkey
+Environment=LOWKEY_CONFIG=/etc/lowkey/lowkey.toml
+# Holds LOWKEY_ADMIN_PASSWORD_HASH='$argon2id$...' (single-quoted). Read by
+# systemd as root, so it can be mode 0600.
+EnvironmentFile=-/etc/lowkey/admin.env
+Environment=RUST_LOG=info
+Restart=on-failure
+
+# Runs as a throwaway user that owns only /var/lib/lowkey.
+DynamicUser=yes
+StateDirectory=lowkey
+StateDirectoryMode=0700
+
+# Hardening: the server needs nothing beyond its data and a socket.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+# A safety net on small VMs.
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

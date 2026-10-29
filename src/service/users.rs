@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use super::password_work::run_password_work;
 use super::{Caller, Quotas, ServiceError, hash_password};
 use crate::domain::Username;
 use crate::storage::{FsStore, UserRecord};
@@ -65,8 +66,6 @@ async fn new_record(password: &str) -> Result<UserRecord, ServiceError> {
         )));
     }
     let password = password.to_owned();
-    let password_hash = tokio::task::spawn_blocking(move || hash_password(&password))
-        .await
-        .expect("password hashing does not panic");
+    let password_hash = run_password_work(move || hash_password(&password)).await;
     Ok(UserRecord { password_hash })
 }

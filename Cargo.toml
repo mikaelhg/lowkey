@@ -25,6 +25,12 @@ http-body-util = "0.1.5"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
 
+# Small, fast binaries for small VMs.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 # Argon2 is unbearably slow unoptimized; keep debug builds and tests snappy.
 [profile.dev.package.argon2]
 opt-level = 3

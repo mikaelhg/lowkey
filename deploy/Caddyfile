@@ -1,0 +1,15 @@
+# Caddy terminates TLS (with automatic certificates) and forwards to Lowkey.
+# Install as /etc/caddy/Caddyfile and replace the domain with your own.
+#
+# Caddy sets X-Forwarded-For to the address it saw, which is why the example
+# config enables trust_forwarded_for.
+
+kv.example.com {
+	# Refuse oversized uploads before they reach Lowkey. Keep this at or
+	# above [limits] max_document_bytes.
+	request_body {
+		max_size 2MB
+	}
+
+	reverse_proxy 127.0.0.1:8080
+}
