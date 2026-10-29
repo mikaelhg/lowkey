@@ -1,10 +1,12 @@
 //! Documents: validated bodies stored in a database.
 
+use std::sync::Arc;
+
 use serde_json::Value;
 
-use super::{Caller, ServiceError};
+use super::{Caller, Quotas, ServiceError};
 use crate::domain::{ContentType, DbName, DocName, Document, JsonPath, Username};
-use crate::storage::{FsStore, StorageError};
+use crate::storage::{FsStore, StorageError, Usage};
 
 /// Whether a write created a new document or replaced an existing one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,11 +17,12 @@ pub enum Written {
 
 pub struct Documents {
     store: FsStore,
+    quotas: Arc<Quotas>,
 }
 
 impl Documents {
-    pub fn new(store: FsStore) -> Self {
-        Self { store }
+    pub fn new(store: FsStore, quotas: Arc<Quotas>) -> Self {
+        Self { store, quotas }
     }
 
     /// Lists the documents in a database. Public.
@@ -71,11 +74,20 @@ impl Documents {
     ) -> Result<Written, ServiceError> {
         caller.require_owner_or_admin(user)?;
         validate(document)?;
-        let replaced = self.store.write_doc(user, db, doc, document).await?;
-        Ok(match replaced {
-            Some(_) => Written::Replaced,
-            None => Written::Created,
-        })
+
+        let mut usage = self.quotas.lock(user).await;
+        let new_doc = doc_usage(document.body.len() as u64);
+        let (written, after) = match self.store.doc_size(user, db, doc).await? {
+            Some(old_size) => (
+                Written::Replaced,
+                usage.minus(doc_usage(old_size)).plus(new_doc),
+            ),
+            None => (Written::Created, usage.plus(new_doc)),
+        };
+        self.quotas.check(*usage, after)?;
+        self.store.write_doc(user, db, doc, document).await?;
+        *usage = after;
+        Ok(written)
     }
 
     /// Stores a document under a generated, time-ordered name and returns
@@ -93,7 +105,12 @@ impl Documents {
             .to_string()
             .parse()
             .expect("a ULID is a valid document name");
+
+        let mut usage = self.quotas.lock(user).await;
+        let after = usage.plus(doc_usage(document.body.len() as u64));
+        self.quotas.check(*usage, after)?;
         self.store.write_doc(user, db, &doc, document).await?;
+        *usage = after;
         Ok(doc)
     }
 
@@ -106,7 +123,24 @@ impl Documents {
         doc: &DocName,
     ) -> Result<(), ServiceError> {
         caller.require_owner_or_admin(user)?;
-        Ok(self.store.delete_doc(user, db, doc).await?)
+        let mut usage = self.quotas.lock(user).await;
+        let size = self
+            .store
+            .doc_size(user, db, doc)
+            .await?
+            .ok_or(ServiceError::NotFound)?;
+        self.store.delete_doc(user, db, doc).await?;
+        *usage = usage.minus(doc_usage(size));
+        Ok(())
+    }
+}
+
+/// What a single document of `bytes` bytes counts against a quota.
+fn doc_usage(bytes: u64) -> Usage {
+    Usage {
+        documents: 1,
+        bytes,
+        ..Usage::default()
     }
 }
 

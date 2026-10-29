@@ -75,17 +75,11 @@ impl Auth {
         }
     }
 
-    /// Identifies the caller. No credentials means an anonymous caller;
-    /// wrong credentials are an error rather than a silent downgrade.
-    pub async fn authenticate(
-        &self,
-        credentials: Option<Credentials>,
-    ) -> Result<Caller, ServiceError> {
-        let Some(credentials) = credentials else {
-            return Ok(Caller::Anonymous);
-        };
+    /// Identifies the caller from their credentials. Wrong credentials are
+    /// an error, never a silent downgrade to anonymous.
+    pub async fn authenticate(&self, credentials: &Credentials) -> Result<Caller, ServiceError> {
         let (caller, password_hash) = self.lookup(&credentials.username).await?;
-        if self.check_password(&credentials, password_hash).await {
+        if self.check_password(credentials, password_hash).await {
             Ok(caller)
         } else {
             Err(ServiceError::Unauthorized)

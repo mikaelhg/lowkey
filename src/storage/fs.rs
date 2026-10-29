@@ -91,23 +91,29 @@ impl FsStore {
         decode_document(contents).map_err(|reason| StorageError::Corrupt { path, reason })
     }
 
-    /// Creates or replaces a document in an existing database. Returns the
-    /// body size of the document it replaced, or `None` if it created one.
+    /// Creates or replaces a document in an existing database.
     pub async fn write_doc(
         &self,
         user: &Username,
         db: &DbName,
         doc: &DocName,
         document: &Document,
+    ) -> Result<()> {
+        write_atomic(&self.doc_file(user, db, doc), &encode_document(document)).await
+    }
+
+    /// The body size of a document, or `None` if there is no such document.
+    pub async fn doc_size(
+        &self,
+        user: &Username,
+        db: &DbName,
+        doc: &DocName,
     ) -> Result<Option<u64>> {
-        let path = self.doc_file(user, db, doc);
-        let replaced = match body_len(&path).await {
-            Ok(len) => Some(len),
-            Err(StorageError::NotFound) => None,
-            Err(error) => return Err(error),
-        };
-        write_atomic(&path, &encode_document(document)).await?;
-        Ok(replaced)
+        match body_len(&self.doc_file(user, db, doc)).await {
+            Ok(len) => Ok(Some(len)),
+            Err(StorageError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub async fn delete_doc(&self, user: &Username, db: &DbName, doc: &DocName) -> Result<()> {
@@ -116,6 +122,19 @@ impl FsStore {
 
     // Usage
 
+    /// What one database holds: itself, its documents and their bytes.
+    pub async fn db_usage(&self, user: &Username, db: &DbName) -> Result<Usage> {
+        let mut usage = Usage {
+            databases: 1,
+            ..Usage::default()
+        };
+        for doc in self.list_docs(user, db).await? {
+            usage.documents += 1;
+            usage.bytes += body_len(&self.doc_file(user, db, &doc)).await?;
+        }
+        Ok(usage)
+    }
+
     /// Walks the whole store and reports what each user stores. Meant to run
     /// once at startup to seed quota tracking.
     pub async fn disk_usage(&self) -> Result<HashMap<Username, Usage>> {
@@ -123,11 +142,7 @@ impl FsStore {
         for user in list_names::<Username>(&self.root, EntryKind::Dir).await? {
             let mut total = Usage::default();
             for db in self.list_dbs(&user).await? {
-                total.databases += 1;
-                for doc in self.list_docs(&user, &db).await? {
-                    total.documents += 1;
-                    total.bytes += body_len(&self.doc_file(&user, &db, &doc)).await?;
-                }
+                total = total.plus(self.db_usage(&user, &db).await?);
             }
             usage.insert(user, total);
         }
@@ -383,10 +398,17 @@ mod tests {
     async fn writing_a_document_replaces_it() {
         let (_dir, store) = store_with_db().await;
         let (alice, notes, doc) = (name("alice"), name("notes"), name("doc"));
-        let created = store.write_doc(&alice, &notes, &doc, &json("123")).await;
-        assert_eq!(created.unwrap(), None);
-        let replaced = store.write_doc(&alice, &notes, &doc, &json("2")).await;
-        assert_eq!(replaced.unwrap(), Some(3));
+        assert_eq!(store.doc_size(&alice, &notes, &doc).await.unwrap(), None);
+        store
+            .write_doc(&alice, &notes, &doc, &json("123"))
+            .await
+            .unwrap();
+        assert_eq!(store.doc_size(&alice, &notes, &doc).await.unwrap(), Some(3));
+        store
+            .write_doc(&alice, &notes, &doc, &json("2"))
+            .await
+            .unwrap();
+        assert_eq!(store.doc_size(&alice, &notes, &doc).await.unwrap(), Some(1));
         assert_eq!(
             store.read_doc(&alice, &notes, &doc).await.unwrap(),
             json("2")

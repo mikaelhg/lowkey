@@ -35,3 +35,22 @@ pub struct Usage {
     pub documents: u64,
     pub bytes: u64,
 }
+
+impl Usage {
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            databases: self.databases + other.databases,
+            documents: self.documents + other.documents,
+            bytes: self.bytes + other.bytes,
+        }
+    }
+
+    /// Subtracts `other`, stopping at zero.
+    pub fn minus(self, other: Self) -> Self {
+        Self {
+            databases: self.databases.saturating_sub(other.databases),
+            documents: self.documents.saturating_sub(other.documents),
+            bytes: self.bytes.saturating_sub(other.bytes),
+        }
+    }
+}

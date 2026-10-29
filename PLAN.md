@@ -25,8 +25,21 @@ design decisions behind the implementation.
   escape is `400`.
 - **PUT** replaces the whole document. Deleting a user removes all their data
   immediately. One process owns the data directory.
-- **Limits:** max document size, per-user quotas (bytes, documents, databases),
-  per-IP rate limiting with a stricter limit on failed auth.
+- **Limits** (`[limits]` in the config, defaults in parentheses):
+  - `max_document_bytes` (1 MiB): document bodies only, `413` beyond. Forms
+    keep axum's default limit.
+  - Per-user quotas `max_bytes_per_user` (100 MiB, bodies only),
+    `max_documents_per_user` (10 000), `max_databases_per_user` (50): `507`
+    beyond. Usage is scanned from disk at startup and tracked in memory under
+    a per-user lock, so concurrent writes can't overshoot. A change that
+    doesn't grow a counter is always allowed, so users over a lowered limit
+    can still clean up.
+  - `requests_per_minute` (600) per client address, and
+    `failed_logins_per_minute` (10): once reached, logins from that address
+    are refused without checking the password. Both `429` with
+    `Retry-After`, fixed one-minute windows, `0` disables.
+  - `trust_forwarded_for` (false, top level): take the client address from
+    the last `X-Forwarded-For` entry, for use behind a reverse proxy.
 - **Deployment:** static binary, systemd, TLS terminated by a reverse proxy (Caddy).
 
 ## API
@@ -56,7 +69,8 @@ Responses:
 - Deletes and password changes return `204`.
 - Errors are plain text: `400` invalid name or body, `401` missing or wrong
   login (with `WWW-Authenticate`), `403` not yours, `404`, `409` name taken,
-  `415` missing or unsupported content type.
+  `413` document too large, `415` missing or unsupported content type, `429`
+  rate limited, `507` quota exceeded.
 
 The admin may write to any user's databases, for moderation.
 

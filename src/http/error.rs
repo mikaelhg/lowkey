@@ -14,6 +14,7 @@ impl IntoResponse for ServiceError {
             Self::Conflict => StatusCode::CONFLICT,
             Self::InvalidInput(_) => StatusCode::BAD_REQUEST,
             Self::UnsupportedContentType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Self::QuotaExceeded(_) => StatusCode::INSUFFICIENT_STORAGE,
             Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

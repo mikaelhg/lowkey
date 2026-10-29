@@ -18,6 +18,8 @@ pub enum ServiceError {
         "unsupported content type; use application/json, text/plain or application/octet-stream"
     )]
     UnsupportedContentType,
+    #[error("{0}")]
+    QuotaExceeded(String),
     #[error("document is not JSON, so it has no keys")]
     NotJson,
     #[error("storage failure: {0}")]

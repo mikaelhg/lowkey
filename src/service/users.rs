@@ -1,6 +1,8 @@
 //! User account management.
 
-use super::{Caller, ServiceError, hash_password};
+use std::sync::Arc;
+
+use super::{Caller, Quotas, ServiceError, hash_password};
 use crate::domain::Username;
 use crate::storage::{FsStore, UserRecord};
 
@@ -9,11 +11,12 @@ const MAX_PASSWORD_LEN: usize = 1024;
 
 pub struct Users {
     store: FsStore,
+    quotas: Arc<Quotas>,
 }
 
 impl Users {
-    pub fn new(store: FsStore) -> Self {
-        Self { store }
+    pub fn new(store: FsStore, quotas: Arc<Quotas>) -> Self {
+        Self { store, quotas }
     }
 
     /// Creates a user. Admin only.
@@ -43,7 +46,9 @@ impl Users {
     /// Deletes a user and all their data. The user themself or the admin.
     pub async fn delete(&self, caller: &Caller, user: &Username) -> Result<(), ServiceError> {
         caller.require_owner_or_admin(user)?;
-        Ok(self.store.delete_user(user).await?)
+        self.store.delete_user(user).await?;
+        self.quotas.forget(user);
+        Ok(())
     }
 }
 

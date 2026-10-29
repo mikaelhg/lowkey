@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use anyhow::Context;
 use lowkey::config::Config;
 use lowkey::service::{hash_password, is_password_hash};
@@ -54,10 +56,13 @@ async fn serve() -> anyhow::Result<()> {
         .with_context(|| format!("binding to {}", config.listen))?;
     tracing::info!(listen = %config.listen, data_dir = %config.data_dir.display(), "lowkey started");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("serving HTTP")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("serving HTTP")?;
 
     tracing::info!("lowkey stopped");
     Ok(())

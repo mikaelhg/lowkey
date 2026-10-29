@@ -6,13 +6,17 @@ mod auth;
 mod databases;
 mod documents;
 mod error;
+mod quota;
 mod users;
 
 pub use auth::{Auth, Credentials, hash_password, is_password_hash};
 pub use databases::Databases;
 pub use documents::{Documents, Written};
 pub use error::ServiceError;
+pub use quota::{QuotaLimits, Quotas};
 pub use users::Users;
+
+use std::sync::Arc;
 
 use crate::domain::Username;
 use crate::storage::FsStore;
@@ -54,12 +58,13 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn new(store: FsStore, admin_password_hash: Option<String>) -> Self {
+    pub fn new(store: FsStore, admin_password_hash: Option<String>, quotas: Quotas) -> Self {
+        let quotas = Arc::new(quotas);
         Self {
             auth: Auth::new(store.clone(), admin_password_hash),
-            users: Users::new(store.clone()),
-            databases: Databases::new(store.clone()),
-            documents: Documents::new(store),
+            users: Users::new(store.clone(), quotas.clone()),
+            databases: Databases::new(store.clone(), quotas.clone()),
+            documents: Documents::new(store, quotas),
         }
     }
 }

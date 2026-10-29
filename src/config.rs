@@ -22,6 +22,11 @@ pub struct Config {
     /// Argon2 PHC hash of the admin password, as printed by
     /// `lowkey hash-password`. Without it the admin account is disabled.
     pub admin_password_hash: Option<String>,
+    /// Take the client address from the last `X-Forwarded-For` entry. Only
+    /// enable this behind a reverse proxy that sets the header.
+    pub trust_forwarded_for: bool,
+    /// Resource limits, in the `[limits]` table.
+    pub limits: Limits,
 }
 
 impl Default for Config {
@@ -30,6 +35,39 @@ impl Default for Config {
             listen: SocketAddr::from(([127, 0, 0, 1], 8080)),
             data_dir: PathBuf::from("data"),
             admin_password_hash: None,
+            trust_forwarded_for: false,
+            limits: Limits::default(),
+        }
+    }
+}
+
+/// Limits that keep one client or user from exhausting a small server.
+/// Rate limits of 0 disable that limit.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Limits {
+    /// Largest accepted request body, in bytes.
+    pub max_document_bytes: usize,
+    /// Total document body bytes per user.
+    pub max_bytes_per_user: u64,
+    pub max_documents_per_user: u64,
+    pub max_databases_per_user: u64,
+    /// Requests per client address per minute.
+    pub requests_per_minute: u32,
+    /// Failed logins per client address per minute before further logins
+    /// from that address are refused for the rest of the minute.
+    pub failed_logins_per_minute: u32,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_document_bytes: 1024 * 1024,
+            max_bytes_per_user: 100 * 1024 * 1024,
+            max_documents_per_user: 10_000,
+            max_databases_per_user: 50,
+            requests_per_minute: 600,
+            failed_logins_per_minute: 10,
         }
     }
 }
@@ -112,6 +150,16 @@ mod tests {
             toml::from_str("listen = \"0.0.0.0:9000\"\ndata_dir = \"/var/lib/lowkey\"").unwrap();
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.data_dir, PathBuf::from("/var/lib/lowkey"));
+    }
+
+    #[test]
+    fn limits_table_overrides_only_what_it_names() {
+        let config: Config = toml::from_str("[limits]\nmax_databases_per_user = 3").unwrap();
+        assert_eq!(config.limits.max_databases_per_user, 3);
+        assert_eq!(
+            config.limits.max_document_bytes,
+            Limits::default().max_document_bytes
+        );
     }
 
     #[test]

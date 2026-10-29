@@ -1,26 +1,48 @@
 //! Extracting the [`Caller`] from HTTP Basic auth.
 
+use std::net::{IpAddr, Ipv4Addr};
+
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
 use super::AppState;
+use super::middleware::ClientIp;
+use super::rate_limit::too_many_requests;
 use crate::service::{Caller, Credentials, ServiceError};
 
+/// No credentials means an anonymous caller. Clients with too many recent
+/// failed logins are refused before their password is even checked, which
+/// stops guessing and spares the CPU.
 impl FromRequestParts<AppState> for Caller {
-    type Rejection = ServiceError;
+    type Rejection = Response;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        let credentials = match parts.headers.get(header::AUTHORIZATION) {
-            None => None,
-            Some(value) => Some(parse_basic(value).ok_or(ServiceError::Unauthorized)?),
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Response> {
+        let Some(value) = parts.headers.get(header::AUTHORIZATION) else {
+            return Ok(Caller::Anonymous);
         };
-        state.auth.authenticate(credentials).await
+        let credentials =
+            parse_basic(value).ok_or_else(|| ServiceError::Unauthorized.into_response())?;
+
+        let ip = parts
+            .extensions
+            .get::<ClientIp>()
+            .map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |client| client.0);
+        let failed_logins = &state.throttle.failed_logins;
+        if failed_logins.is_limited(ip) {
+            return Err(too_many_requests());
+        }
+
+        match state.services.auth.authenticate(&credentials).await {
+            Err(ServiceError::Unauthorized) => {
+                failed_logins.hit(ip);
+                Err(ServiceError::Unauthorized.into_response())
+            }
+            result => result.map_err(IntoResponse::into_response),
+        }
     }
 }
 

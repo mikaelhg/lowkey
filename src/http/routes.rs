@@ -1,11 +1,15 @@
 //! The API route table.
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 
 use super::{AppState, handlers};
 
-pub fn routes() -> Router<AppState> {
+/// All routes. Document bodies are capped at `max_document_bytes`; other
+/// bodies (small forms) keep axum's default limit.
+pub fn routes(max_document_bytes: usize) -> Router<AppState> {
+    let document_limit = DefaultBodyLimit::max(max_document_bytes);
     Router::new()
         .route("/healthz", get(handlers::healthz))
         // Accounts
@@ -19,13 +23,15 @@ pub fn routes() -> Router<AppState> {
             "/{user}/{db}",
             get(handlers::list_docs)
                 .post(handlers::push_doc)
-                .delete(handlers::delete_db),
+                .delete(handlers::delete_db)
+                .layer(document_limit),
         )
         .route(
             "/{user}/{db}/{doc}",
             get(handlers::get_doc)
                 .put(handlers::put_doc)
-                .delete(handlers::delete_doc),
+                .delete(handlers::delete_doc)
+                .layer(document_limit),
         )
         .route("/{user}/{db}/{doc}/{*path}", get(handlers::get_value))
 }
