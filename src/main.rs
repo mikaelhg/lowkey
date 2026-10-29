@@ -1,10 +1,35 @@
 use anyhow::Context;
 use lowkey::config::Config;
+use lowkey::service::{hash_password, is_password_hash};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
+const USAGE: &str = "usage: lowkey [hash-password]";
+
+fn main() -> anyhow::Result<()> {
+    match std::env::args().nth(1).as_deref() {
+        None => serve(),
+        Some("hash-password") => print_password_hash(),
+        Some(_) => anyhow::bail!(USAGE),
+    }
+}
+
+/// Reads a password from stdin and prints its hash, for the
+/// `admin_password_hash` setting.
+fn print_password_hash() -> anyhow::Result<()> {
+    eprintln!("Enter the password, then press Enter:");
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .context("reading password")?;
+    let password = line.trim_end_matches(['\r', '\n']);
+    anyhow::ensure!(!password.is_empty(), "password must not be empty");
+    println!("{}", hash_password(password));
+    Ok(())
+}
+
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn serve() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -12,7 +37,17 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::load().context("loading configuration")?;
-    let app = lowkey::build_app(&config);
+    match &config.admin_password_hash {
+        Some(hash) => anyhow::ensure!(
+            is_password_hash(hash),
+            "admin_password_hash is not a valid password hash; create one with `lowkey hash-password`"
+        ),
+        None => tracing::warn!("no admin_password_hash configured, admin account disabled"),
+    }
+
+    let app = lowkey::build_app(&config)
+        .await
+        .with_context(|| format!("opening data directory {}", config.data_dir.display()))?;
 
     let listener = TcpListener::bind(config.listen)
         .await

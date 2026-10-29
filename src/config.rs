@@ -19,6 +19,9 @@ pub struct Config {
     pub listen: SocketAddr,
     /// Directory holding all user data.
     pub data_dir: PathBuf,
+    /// Argon2 PHC hash of the admin password, as printed by
+    /// `lowkey hash-password`. Without it the admin account is disabled.
+    pub admin_password_hash: Option<String>,
 }
 
 impl Default for Config {
@@ -26,6 +29,7 @@ impl Default for Config {
         Self {
             listen: SocketAddr::from(([127, 0, 0, 1], 8080)),
             data_dir: PathBuf::from("data"),
+            admin_password_hash: None,
         }
     }
 }
@@ -69,7 +73,8 @@ impl Config {
         })
     }
 
-    /// Applies `LOWKEY_LISTEN` and `LOWKEY_DATA_DIR` overrides. The lookup is
+    /// Applies `LOWKEY_LISTEN`, `LOWKEY_DATA_DIR` and
+    /// `LOWKEY_ADMIN_PASSWORD_HASH` overrides. The lookup is
     /// passed in so tests don't have to touch the process environment.
     pub fn with_env_overrides(
         mut self,
@@ -83,6 +88,9 @@ impl Config {
         }
         if let Some(value) = lookup("LOWKEY_DATA_DIR") {
             self.data_dir = PathBuf::from(value);
+        }
+        if let Some(value) = lookup("LOWKEY_ADMIN_PASSWORD_HASH") {
+            self.admin_password_hash = Some(value);
         }
         Ok(self)
     }
