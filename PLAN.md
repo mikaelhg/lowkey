@@ -18,7 +18,11 @@ design decisions behind the implementation.
   a ULID.
 - **Content:** bodies are stored verbatim with their content type. JSON
   (`application/json`, `text/json` alias) is validated on write.
-- **Key lookup:** nested paths like JSON Pointer (`/or/0`, `~1` escapes `/`).
+- **Key lookup:** nested paths like JSON Pointer (`/or/0`, `~1` escapes `/`,
+  `~0` escapes `~`), returned as compact JSON. Array indexes have no leading
+  zeros. Asking for a key in a non-JSON document is `404` with an explanation
+  (`415` would wrongly suggest the request body was at fault). A malformed `~`
+  escape is `400`.
 - **PUT** replaces the whole document. Deleting a user removes all their data
   immediately. One process owns the data directory.
 - **Limits:** max document size, per-user quotas (bytes, documents, databases),

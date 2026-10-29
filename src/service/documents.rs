@@ -1,8 +1,10 @@
 //! Documents: validated bodies stored in a database.
 
+use serde_json::Value;
+
 use super::{Caller, ServiceError};
-use crate::domain::{ContentType, DbName, DocName, Document, Username};
-use crate::storage::FsStore;
+use crate::domain::{ContentType, DbName, DocName, Document, JsonPath, Username};
+use crate::storage::{FsStore, StorageError};
 
 /// Whether a write created a new document or replaced an existing one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +35,28 @@ impl Documents {
         doc: &DocName,
     ) -> Result<Document, ServiceError> {
         Ok(self.store.read_doc(user, db, doc).await?)
+    }
+
+    /// Reads the value at `path` inside a JSON document. Public.
+    pub async fn read_value(
+        &self,
+        user: &Username,
+        db: &DbName,
+        doc: &DocName,
+        path: &JsonPath,
+    ) -> Result<Value, ServiceError> {
+        let document = self.store.read_doc(user, db, doc).await?;
+        if document.content_type != ContentType::Json {
+            return Err(ServiceError::NotJson);
+        }
+        // Bodies are validated on write, so a parse failure means corruption.
+        let value: Value = serde_json::from_slice(&document.body).map_err(|error| {
+            ServiceError::Storage(StorageError::Corrupt {
+                path: format!("{user}/{db}/{doc}").into(),
+                reason: error.to_string(),
+            })
+        })?;
+        path.lookup(&value).cloned().ok_or(ServiceError::NotFound)
     }
 
     /// Stores a document under a chosen name, replacing any existing one.

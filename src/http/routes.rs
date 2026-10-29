@@ -27,4 +27,5 @@ pub fn routes() -> Router<AppState> {
                 .put(handlers::put_doc)
                 .delete(handlers::delete_doc),
         )
+        .route("/{user}/{db}/{doc}/{*path}", get(handlers::get_value))
 }

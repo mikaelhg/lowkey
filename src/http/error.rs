@@ -10,7 +10,7 @@ impl IntoResponse for ServiceError {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
-            Self::NotFound => StatusCode::NOT_FOUND,
+            Self::NotFound | Self::NotJson => StatusCode::NOT_FOUND,
             Self::Conflict => StatusCode::CONFLICT,
             Self::InvalidInput(_) => StatusCode::BAD_REQUEST,
             Self::UnsupportedContentType => StatusCode::UNSUPPORTED_MEDIA_TYPE,

@@ -9,7 +9,7 @@ use axum::{Form, Json};
 use serde::Deserialize;
 
 use super::AppState;
-use crate::domain::{ContentType, DbName, DocName, Document, Username};
+use crate::domain::{ContentType, DbName, DocName, Document, JsonPath, Username};
 use crate::service::{Caller, ServiceError, Written};
 
 /// Liveness check for load balancers and monitoring.
@@ -158,6 +158,22 @@ pub async fn get_doc(
         [(header::CONTENT_TYPE, document.content_type.as_mime())],
         document.body,
     ))
+}
+
+/// `GET /{user}/{db}/{doc}/{*path}`: one value from inside a JSON document.
+pub async fn get_value(
+    State(services): State<AppState>,
+    Path((user, db, doc, path)): Path<(String, String, String, String)>,
+) -> Result<Json<serde_json::Value>, ServiceError> {
+    let user: Username = user.parse()?;
+    let db: DbName = db.parse()?;
+    let doc: DocName = doc.parse()?;
+    let path: JsonPath = path.parse()?;
+    let value = services
+        .documents
+        .read_value(&user, &db, &doc, &path)
+        .await?;
+    Ok(Json(value))
 }
 
 /// `PUT /{user}/{db}/{doc}`: 201 if created, 204 if replaced.

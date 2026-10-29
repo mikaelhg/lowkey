@@ -249,3 +249,59 @@ async fn server_explains_what_it_cannot_store() {
     // Nothing was stored along the way.
     assert_eq!(app.get("/alice/notes").await.body, "[]");
 }
+
+/// As a user, I can fetch a single value from inside a JSON document, so
+/// that my clients don't have to download and pick apart whole documents.
+#[tokio::test]
+async fn user_reads_one_value_from_inside_a_document() {
+    let app = app_with_notes().await;
+    let todo = r#"{"any": "valid", "json": "document", "or": ["you", "know"]}"#;
+    app.request(Method::PUT, "/alice/notes/todo", Some(ALICE), JSON, todo)
+        .await;
+
+    // The README example.
+    let reply = app.get("/alice/notes/todo/or").await;
+    assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+    assert_eq!(reply.header(header::CONTENT_TYPE), "application/json");
+    assert_eq!(reply.body, r#"["you","know"]"#);
+
+    // Paths walk into nested objects and arrays.
+    assert_eq!(app.get("/alice/notes/todo/any").await.body, r#""valid""#);
+    assert_eq!(app.get("/alice/notes/todo/or/1").await.body, r#""know""#);
+
+    // Keys may contain anything: `~1` stands for `/` and `~0` for `~`, and
+    // other characters are percent-encoded as usual.
+    let tricky = r#"{"a/b": {"~c": {"d e": 42}}}"#;
+    app.request(
+        Method::PUT,
+        "/alice/notes/tricky",
+        Some(ALICE),
+        JSON,
+        tricky,
+    )
+    .await;
+    let reply = app.get("/alice/notes/tricky/a~1b/~0c/d%20e").await;
+    assert_eq!(reply.body, "42");
+
+    // What isn't there is 404.
+    for missing in ["nope", "or/2", "or/01", "any/deeper"] {
+        let reply = app.get(&format!("/alice/notes/todo/{missing}")).await;
+        assert_eq!(reply.status, StatusCode::NOT_FOUND, "{missing}");
+    }
+    assert_eq!(
+        app.get("/alice/notes/nodoc/or").await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    // A malformed escape is a bad request.
+    let reply = app.get("/alice/notes/todo/bad~2escape").await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+
+    // Only JSON documents have keys.
+    let text = Some("text/plain");
+    app.request(Method::PUT, "/alice/notes/memo", Some(ALICE), text, "hello")
+        .await;
+    let reply = app.get("/alice/notes/memo/anything").await;
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert!(reply.body.contains("JSON"), "{}", reply.body);
+}
