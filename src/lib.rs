@@ -1,7 +1,9 @@
 //! Lowkey, a low resource key/value HTTP database.
 
 pub mod config;
+pub mod domain;
 pub mod http;
+pub mod storage;
 
 use axum::Router;
 

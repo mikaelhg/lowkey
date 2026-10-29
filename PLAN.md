@@ -78,12 +78,14 @@ tests/       api.rs
 ### Storage layout
 
 ```
-data/<user>/user.json             # argon2 hash, created time
-data/<user>/<db>/<doc>.body       # raw bytes
-data/<user>/<db>/<doc>.meta       # content type
+data/<user>/user.json             # argon2 hash
+data/<user>/<db>/<doc>            # content type line, then the raw body
 ```
 
-Names match `[A-Za-z0-9_-]{1,64}`.
+Names match `[A-Za-z0-9_-]{1,64}`, so they can never contain a dot. Content
+type and body share one file so a single atomic rename replaces both. Temporary
+files and pending deletions are hidden (`.tmp-*`, `.deleted-*`) and removed
+when the store opens.
 
 ### Conventions
 
@@ -92,6 +94,8 @@ Names match `[A-Za-z0-9_-]{1,64}`.
 - Readability over cleverness: no custom macros, short functions, doc comments
   on public items.
 - Tests per layer; HTTP tests drive `build_app` with `tower::ServiceExt::oneshot`.
+- Each feature starts with a user-story test ("As a ..., I can ..., so that
+  ..."), then the implementation.
 
 ## Milestones
 
